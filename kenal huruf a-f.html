@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kenal Huruf - Versi Penuh</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles to override or extend Tailwind */
+        body {
+            font-family: 'Inter', sans-serif; /* Using Inter font as per instructions */
+            background: linear-gradient(to top, #a0e8ff, #ffffff);
+            margin: 0;
+            overflow: hidden; /* Prevent scrolling */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start; /* Align items to the top */
+            min-height: 100vh; /* Ensure body takes full viewport height */
+        }
+
+        /* Keyframe for bubble falling animation */
+        @keyframes fall {
+            0% { top: -120px; opacity: 1; transform: scale(1); }
+            100% { top: 100vh; opacity: 0; transform: scale(0.8); }
+        }
+
+        /* Keyframe for bubble click animation */
+        @keyframes pop {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.8; }
+            100% { transform: scale(0); opacity: 0; }
+        }
+
+        .bubble {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            position: absolute;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3em;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+            animation: fall 6s linear forwards; /* Use forwards to keep the last state */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.1s ease-out; /* Smooth transition for click feedback */
+        }
+
+        .bubble.pop-animation {
+            animation: pop 0.3s ease-out forwards; /* Apply pop animation on click */
+        }
+
+        /* Style for the message box */
+        #message-box {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 15px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            display: none; /* Hidden by default */
+            font-size: 1.5em;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Game Title -->
+    <h1 class="text-4xl md:text-5xl lg:text-6xl text-gray-800 font-extrabold my-5 text-center px-4">
+        🎈 Kenal Huruf: Cabaran 1 Minit 🎈
+    </h1>
+
+    <!-- Game Instructions and Info -->
+    <div id="instruction" class="text-xl md:text-2xl font-bold text-red-600 mb-4 text-center px-4">
+        Klik "Mula Permainan" untuk bermula!
+    </div>
+    <div id="timer" class="text-lg md:text-xl font-bold text-gray-700 mb-2"></div>
+    <div id="highscore" class="text-lg md:text-xl font-bold text-gray-700 mb-4"></div>
+    <div id="current-score" class="text-lg md:text-xl font-bold text-blue-700 mb-4"></div>
+
+
+    <!-- Message Display Area -->
+    <div id="game-message" class="text-xl text-blue-600 font-bold h-10 mb-4 text-center px-4"></div>
+
+    <!-- Game Buttons -->
+    <div id="buttons" class="flex flex-wrap justify-center gap-4 mt-4">
+        <button onclick="startGame()" class="px-6 py-3 bg-cyan-500 hover:bg-cyan-600 text-white font-semibold rounded-xl shadow-lg transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-opacity-75">
+            Mula Permainan
+        </button>
+        <button onclick="restartGame()" class="px-6 py-3 bg-purple-500 hover:bg-purple-600 text-white font-semibold rounded-xl shadow-lg transition-all duration-300 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-purple-400 focus:ring-opacity-75" style="display: none;">
+            Main Semula
+        </button>
+    </div>
+
+    <!-- Audio Elements -->
+    <audio id="bg-music" loop>
+        <source src="https://cdn.pixabay.com/download/audio/2022/10/28/audio_c7460c9a93.mp3" type="audio/mpeg">
+    </audio>
+
+    <!-- Custom Message Box for game results -->
+    <div id="message-box" class="hidden">
+        <p id="message-box-content"></p>
+        <button onclick="hideMessageBox()" class="mt-4 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl shadow-md transition-all duration-300">
+            OK
+        </button>
+    </div>
+
+    <script>
+        // Define the alphabet to include only 'a' through 'f'
+        const letters = ['a', 'b', 'c', 'd', 'e', 'f'];
+        // A vibrant set of colors for the bubbles
+        const colors = [
+            '#ff6b81', '#feca57', '#48dbfb', '#1dd1a1', '#5f27cd', '#ff9ff3',
+            '#fd79a8', '#00cec9', '#ffeaa7', '#a29bfe', '#fab1a0', '#e17055',
+            '#0984e3', '#badc58', '#c0392b', '#f39c12', '#2ecc71', '#9b59b6'
+        ];
+        // Encouragement messages in Malay
+        const encouragements = ['Bagus!', 'Pandai!', 'Hebat!', 'Cemerlang!', 'Tepat sekali!', 'Terbaik!'];
+
+        let targetLetter = ''; // The letter the player needs to find
+        let gameActive = false; // Flag to indicate if the game is running
+        let bubbleInterval; // Interval for creating new bubbles
+        let timerInterval; // Interval for the game timer
+        let score = 0; // Current game score
+        let timeLeft = 60; // Game duration in seconds
+        let highScore = localStorage.getItem("highScore") || 0; // Load high score from local storage
+
+        // Get references to DOM elements
+        const instruction = document.getElementById('instruction');
+        const gameMessage = document.getElementById('game-message');
+        const timerDisplay = document.getElementById('timer');
+        const highscoreDisplay = document.getElementById('highscore');
+        const currentScoreDisplay = document.getElementById('current-score'); // New: Current score display
+        const bgMusic = document.getElementById('bg-music');
+        const startButton = document.querySelector('#buttons button:first-child');
+        const restartButton = document.querySelector('#buttons button:last-child');
+        const messageBox = document.getElementById('message-box');
+        const messageBoxContent = document.getElementById('message-box-content');
+
+        // Object containing URLs for letter sounds (a-f) from Internet Archive
+        const letterSounds = {
+            a: 'https://archive.org/download/english-alphabet-sound/a.mp3',
+            b: 'https://archive.org/download/english-alphabet-sound/b.mp3',
+            c: 'https://archive.org/download/english-alphabet-sound/c.mp3',
+            d: 'https://archive.org/download/english-alphabet-sound/d.mp3',
+            e: 'https://archive.org/download/english-alphabet-sound/e.mp3',
+            f: 'https://archive.org/download/english-alphabet-sound/f.mp3',
+        };
+
+        /**
+         * Plays the sound associated with a given letter.
+         * @param {string} letter - The letter whose sound is to be played.
+         */
+        function playLetterSound(letter) {
+            // Check if the letter has a corresponding sound URL
+            if (letterSounds[letter]) {
+                const audio = new Audio(letterSounds[letter]);
+                audio.play().catch(e => console.error("Error playing sound:", e));
+            } else {
+                console.warn(`No sound found for letter: ${letter}`);
+            }
+        }
+
+        /**
+         * Updates the high score display on the screen.
+         */
+        function updateHighScoreDisplay() {
+            highscoreDisplay.innerText = `🏆 Skor Tertinggi: ${highScore}`;
+        }
+
+        /**
+         * Updates the current score display on the screen.
+         */
+        function updateCurrentScoreDisplay() {
+            currentScoreDisplay.innerText = `Skor Semasa: ${score}`;
+        }
+
+        /**
+         * Sets a new target letter for the player to find.
+         */
+        function setNewTarget() {
+            targetLetter = letters[Math.floor(Math.random() * letters.length)];
+            instruction.innerHTML = `Sila cari huruf: <span class="text-red-700">${targetLetter.toUpperCase()}</span>`;
+        }
+
+        /**
+         * Creates and adds new bubbles to the game area.
+         * Bubbles contain random letters and fall down the screen.
+         */
+        function createBubbles() {
+            if (!gameActive) return;
+
+            const count = Math.floor(Math.random() * 2) + 2; // Generate 2-3 bubbles at a time
+            for (let i = 0; i < count; i++) {
+                const letter = letters[Math.floor(Math.random() * letters.length)];
+                const bubble = document.createElement('div');
+                bubble.className = 'bubble'; // Apply base bubble styles
+                bubble.innerText = letter; // Display lowercase letter as requested
+                // Position bubble randomly within the window width, accounting for bubble size
+                bubble.style.left = Math.random() * (window.innerWidth - 120) + 'px';
+                // Assign a random background color from the defined palette
+                bubble.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                document.body.appendChild(bubble);
+
+                // Add click event listener to each bubble
+                bubble.addEventListener('click', () => {
+                    if (!gameActive) return; // Prevent clicks if game is not active
+                    playLetterSound(letter); // Play sound for the clicked letter
+
+                    // Add pop animation class
+                    bubble.classList.add('pop-animation');
+
+                    // Check if the clicked letter matches the target letter
+                    if (letter === targetLetter) {
+                        score++; // Increment score
+                        updateCurrentScoreDisplay(); // Update current score display
+                        const praise = encouragements[Math.floor(Math.random() * encouragements.length)];
+                        gameMessage.innerText = praise; // Show encouragement message
+                        setTimeout(() => { gameMessage.innerText = ''; }, 1500); // Clear message after a short delay
+                        setNewTarget(); // Set a new target letter
+                    } else {
+                        // Optional: Add a penalty or visual feedback for incorrect clicks
+                        gameMessage.innerText = 'Cuba lagi!';
+                        setTimeout(() => { gameMessage.innerText = ''; }, 1000);
+                    }
+
+                    // Remove bubble after animation completes or after a short delay
+                    bubble.addEventListener('animationend', (event) => {
+                        if (event.animationName === 'pop') {
+                            bubble.remove();
+                        }
+                    });
+                    // Fallback removal in case animationend doesn't fire or for falling bubbles
+                    setTimeout(() => {
+                        if (bubble.parentNode) bubble.remove();
+                    }, 600); // Shorter timeout for pop animation removal
+                });
+
+                // Remove bubble if it falls off screen without being clicked
+                setTimeout(() => {
+                    if (bubble.parentNode && !bubble.classList.contains('pop-animation')) {
+                        bubble.remove();
+                    }
+                }, 6000); // Matches the fall animation duration
+            }
+        }
+
+        /**
+         * Displays a custom message box to the user.
+         * @param {string} message - The message to display.
+         */
+        function showMessageBox(message) {
+            messageBoxContent.innerText = message;
+            messageBox.classList.remove('hidden');
+            messageBox.classList.add('flex', 'flex-col', 'items-center', 'justify-center');
+        }
+
+        /**
+         * Hides the custom message box.
+         */
+        function hideMessageBox() {
+            messageBox.classList.add('hidden');
+            messageBox.classList.remove('flex', 'flex-col', 'items-center', 'justify-center');
+        }
+
+        /**
+         * Starts the game. Initializes score, timer, and bubble generation.
+         */
+        function startGame() {
+            if (gameActive) return; // Prevent starting if already active
+
+            gameActive = true;
+            score = 0;
+            timeLeft = 60; // Reset timer for new game
+            gameMessage.innerText = '';
+            timerDisplay.innerText = `⏱️ Masa: ${timeLeft} saat`;
+            updateHighScoreDisplay();
+            updateCurrentScoreDisplay(); // Update current score display at start
+            setNewTarget();
+
+            // Ensure music is stopped and reset before playing to prevent interruption errors
+            if (bgMusic) {
+                // Only pause and reset if it's currently playing
+                if (!bgMusic.paused) {
+                    bgMusic.pause();
+                    bgMusic.currentTime = 0;
+                }
+                // Now, attempt to play
+                bgMusic.play().catch(e => {
+                    console.error("Error playing background music:", e);
+                });
+            } else {
+                console.warn("Background music element not found.");
+            }
+
+            // Clear any existing bubbles from previous games
+            document.querySelectorAll('.bubble').forEach(bubble => bubble.remove());
+
+            bubbleInterval = setInterval(createBubbles, 1000); // Create bubbles every second
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                timerDisplay.innerText = `⏱️ Masa: ${timeLeft} saat`;
+                if (timeLeft <= 0) {
+                    endGame(); // End game when timer runs out
+                }
+            }, 1000);
+
+            // Hide start button, show restart button
+            startButton.style.display = 'none';
+            restartButton.style.display = 'block';
+        }
+
+        /**
+         * Ends the game. Clears intervals, updates high score, and displays results.
+         */
+        function endGame() {
+            gameActive = false;
+            clearInterval(bubbleInterval); // Stop creating bubbles
+            clearInterval(timerInterval); // Stop the timer
+            if (bgMusic) { // Check if bgMusic exists before trying to pause
+                bgMusic.pause(); // Pause background music
+                bgMusic.currentTime = 0; // Reset music to beginning
+            }
+
+            // Update high score if current score is higher
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem("highScore", highScore); // Save new high score
+            }
+
+            updateHighScoreDisplay(); // Update display with new high score
+
+            // Determine end game message based on score
+            let resultMessage;
+            if (score >= 20) {
+                resultMessage = `🌟 Cemerlang! Anda menjawab betul sebanyak ${score} kali!`;
+            } else if (score >= 10) {
+                resultMessage = `👏 Hebat! Anda menjawab betul sebanyak ${score} kali!`;
+            } else {
+                resultMessage = `👍 Teruskan usaha! Anda menjawab betul sebanyak ${score} kali.`;
+            }
+
+            showMessageBox(resultMessage); // Show result in custom message box
+        }
+
+        // Initial display of high score and current score when the page loads
+        updateHighScoreDisplay();
+        updateCurrentScoreDisplay(); // Initialize current score display
+    </script>
+
+</body>
+</html>
